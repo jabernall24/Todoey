@@ -7,53 +7,70 @@
 //
 
 import UIKit
+import CoreData
 
-class TodoListViewController: UITableViewController {
+class TodoListViewController: UITableViewController{
     
     private let cellID = "TodoCell"
     var itemArray = [Item]()
+    var selectedCategory: Category? {
+        didSet{
+            loadItems()
+        }
+    }
+    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     
-    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items")
+    private let searchBar: UISearchBar = {
+        let s = UISearchBar()
+        s.translatesAutoresizingMaskIntoConstraints = false
+        return s
+    }()
     
     override func viewDidLoad() {
         super.viewDidLoad()
         tableView.register(TodoCell.self, forCellReuseIdentifier: cellID)
-        
-        loadItems()
-
         let rightbutton = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(onAddItem))
         navigationItem.rightBarButtonItem = rightbutton
         navigationItem.title = "Todoey"
+        
+        setUpView()
     }
     
-    func loadItems(){
-        if let data = try? Data(contentsOf: dataFilePath!){
-            let decoder = PropertyListDecoder()
-            do{
-                itemArray = try decoder.decode([Item].self, from: data)
-            }catch{
-                print("Error decoding itemArray, \(error.localizedDescription)")
-            }
+    func loadItems(with request: NSFetchRequest<Item> = Item.fetchRequest(), predicate: NSPredicate? = nil){
+        
+        let categoryPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", selectedCategory!.name!)
+        
+        if let additionalPredicates = predicate{
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categoryPredicate, additionalPredicates])
+        }else{
+            request.predicate = categoryPredicate
         }
+        do {
+            itemArray = try context.fetch(request)
+        }catch{
+            print("Error fetch data from context: \(error.localizedDescription)")
+        }
+        tableView.reloadData()
     }
     
     @objc func onAddItem(){
         let alert = UIAlertController(title: "Add new Todoey item", message: "", preferredStyle: .alert)
         var textField = UITextField()
         
+        let action = UIAlertAction(title: "Add item", style: .default) { (action) in
+            let item = Item(context: self.context)
+            item.title = textField.text!
+            item.done = false
+            item.parentCategory = self.selectedCategory
+            self.itemArray.append(item)
+            self.saveItems()            
+        }
+        
         alert.addTextField { (alertTextField) in
             alertTextField.placeholder = "Create new item"
             textField = alertTextField
         }
         
-        let action = UIAlertAction(title: "Add item", style: .default) { (action) in
-            let item = Item()
-            item.title = textField.text!
-            self.itemArray.append(item)
-            self.saveItems()
-            
-            self.tableView.reloadData()
-        }
         alert.addAction(action)
         self.present(alert, animated: true)
     }
@@ -79,15 +96,41 @@ class TodoListViewController: UITableViewController {
     }
     
     func saveItems() {
-        let encoder = PropertyListEncoder()
-
         do{
-            let data = try encoder.encode(self.itemArray)
-            try data.write(to: self.dataFilePath!)
+            try context.save()
         }catch{
-            print("Error encoding itemArray, \(error.localizedDescription)")
+            print("Error saving context: \(error.localizedDescription)")
         }
         tableView.reloadData()
     }
 
+    fileprivate func setUpView(){
+        searchBar.delegate = self
+        view.addSubview(searchBar)
+        searchBar.bottomAnchor.constraint(equalTo: tableView.topAnchor, constant: 44).isActive = true
+        searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor).isActive = true
+        searchBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor).isActive = true
+        searchBar.heightAnchor.constraint(equalToConstant: 44).isActive = true
+    }
+}
+
+extension TodoListViewController: UISearchBarDelegate{
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+        let request: NSFetchRequest<Item> = Item.fetchRequest()
+        
+        let predicate = NSPredicate(format: "title CONTAINS[cd] %@", searchBar.text!)
+        
+        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        self.loadItems(with: request, predicate: predicate)
+    }
+    
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        if searchBar.text?.count == 0{
+            loadItems()
+            DispatchQueue.main.async {
+                searchBar.resignFirstResponder()
+            }
+        }
+    }
+    
 }

@@ -1,6 +1,6 @@
 # Todoey
 
-Udemy's, The Complete iOS App Development Bootcamp by Angela Yu Todoey app done without storyboards, completly programatically.
+Todoey app (The Complete iOS App Development Bootcamp by Angela Yu)  done without storyboards, completly programatically.
 
 ## MIT License
 
