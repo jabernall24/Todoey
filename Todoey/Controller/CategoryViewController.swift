@@ -7,27 +7,29 @@
 //
 
 import UIKit
-import CoreData
+import RealmSwift
 
 class CategoryViewController: UITableViewController {
     
     private let cellID = "CategoryCell"
-    var categories = [Category]()
-    let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
+    let realm = try! Realm()
+    var categories: Results<Category>?
     
     override func viewDidLoad() {
         super.viewDidLoad()
         tableView.register(CategoryCell.self, forCellReuseIdentifier: cellID)
-        let rightItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(onAddItem))
+        let rightItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(onAddCategory))
         navigationItem.rightBarButtonItem = rightItem
         navigationItem.title = "Todoey"
         
         loadCategories()
     }
     
-    func saveCategories(){
+    func save(category: Category){
         do{
-            try context.save()
+            try realm.write {
+                realm.add(category)
+            }
         }catch{
             print("Error saving context: \(error.localizedDescription)")
         }
@@ -35,24 +37,20 @@ class CategoryViewController: UITableViewController {
     }
     
     func loadCategories(){
-        let request : NSFetchRequest<Category> = Category.fetchRequest()
-        do{
-            categories = try context.fetch(request)
-        }catch{
-            print("Error fetch data from context: \(error.localizedDescription)")
-        }
+        categories = realm.objects(Category.self)
+        
         tableView.reloadData()
     }
     
-    @objc func onAddItem(){
+    @objc func onAddCategory(){
         let alert = UIAlertController(title: "Add a new category", message: "", preferredStyle: .alert)
         var textField = UITextField()
         
         let action = UIAlertAction(title: "Add Category", style: .default) { (category) in
-            let category = Category(context: self.context)
+            let category = Category()
             category.name = textField.text!
-            self.categories.append(category)
-            self.saveCategories()
+            
+            self.save(category: category)
         }
         
         alert.addAction(action)
@@ -66,19 +64,19 @@ class CategoryViewController: UITableViewController {
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return categories.count
+        return categories?.count ?? 1
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: cellID, for: indexPath) as! CategoryCell
-        cell.textLabel?.text = categories[indexPath.row].name
+        cell.textLabel?.text = categories?[indexPath.row].name ?? "No Categories added yet"
         return cell
     }
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         let vc = TodoListViewController()
         if let indexPath = tableView.indexPathForSelectedRow{
-            vc.selectedCategory = categories[indexPath.row]
+            vc.selectedCategory = categories?[indexPath.row]
         }
         navigationController?.show(vc, sender: self)
     }
