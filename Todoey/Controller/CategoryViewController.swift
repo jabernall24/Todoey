@@ -8,22 +8,32 @@
 
 import UIKit
 import RealmSwift
+import SwipeCellKit
+import ChameleonFramework
 
 class CategoryViewController: UITableViewController {
-    
-    private let cellID = "CategoryCell"
+    private let cellID = "Cell"
     let realm = try! Realm()
     var categories: Results<Category>?
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        tableView.register(CategoryCell.self, forCellReuseIdentifier: cellID)
         let rightItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(onAddCategory))
         navigationItem.rightBarButtonItem = rightItem
         navigationItem.title = "Todoey"
         
+        guard let navBar = navigationController?.navigationBar else {fatalError("Navigation controller does not exist")}
+        navBar.prefersLargeTitles = true
+        navBar.barTintColor = #colorLiteral(red: 0.1137254902, green: 0.6078431373, blue: 0.9647058824, alpha: 1)
+        navBar.largeTitleTextAttributes = [NSAttributedString.Key.foregroundColor : FlatWhite()]
+        
+        tableView.separatorStyle = .none
+        tableView.rowHeight = 80
+        tableView.register(SwipeTableViewCell.self, forCellReuseIdentifier: cellID)
+        
         loadCategories()
     }
+    
     
     func save(category: Category){
         do{
@@ -49,7 +59,7 @@ class CategoryViewController: UITableViewController {
         let action = UIAlertAction(title: "Add Category", style: .default) { (category) in
             let category = Category()
             category.name = textField.text!
-            
+            category.color = UIColor.randomFlat.hexValue()
             self.save(category: category)
         }
         
@@ -68,8 +78,18 @@ class CategoryViewController: UITableViewController {
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: cellID, for: indexPath) as! CategoryCell
-        cell.textLabel?.text = categories?[indexPath.row].name ?? "No Categories added yet"
+        let cell = tableView.dequeueReusableCell(withIdentifier: cellID, for: indexPath) as! SwipeTableViewCell
+        cell.delegate = self
+        
+
+        if let category = categories?[indexPath.row] {
+            cell.textLabel?.text = category.name ?? "No Categories added yet"
+            if let color = UIColor(hexString: category.color) {
+                cell.backgroundColor = color
+                cell.textLabel?.textColor = ContrastColorOf(color, returnFlat: true)
+            }
+        }
+        
         return cell
     }
     
@@ -81,4 +101,34 @@ class CategoryViewController: UITableViewController {
         navigationController?.show(vc, sender: self)
     }
 
+}
+
+extension CategoryViewController: SwipeTableViewCellDelegate {
+    func tableView(_ tableView: UITableView, editActionsForRowAt indexPath: IndexPath, for orientation: SwipeActionsOrientation) -> [SwipeAction]? {
+        guard orientation == .right else {return nil}
+        
+        let deleteAction = SwipeAction(style: .destructive, title: "Delete") { (action, indexPath) in
+            
+            if let categoryForDeletion = self.categories?[indexPath.row]{
+                do{
+                    try self.realm.write {
+                        self.realm.delete(categoryForDeletion)
+                    }
+                }catch{
+                    print("Error deleting category: \(error.localizedDescription)")
+                }
+            }
+        }
+        
+        deleteAction.image = UIImage(named: "delete")
+        
+        return [deleteAction]
+    }
+    
+    func tableView(_ tableView: UITableView, editActionsOptionsForRowAt indexPath: IndexPath, for orientation: SwipeActionsOrientation) -> SwipeOptions {
+        var options = SwipeTableOptions()
+        options.expansionStyle = .destructive
+        options.transitionStyle = .border
+        return options
+    }
 }

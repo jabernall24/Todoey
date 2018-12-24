@@ -8,6 +8,8 @@
 
 import UIKit
 import RealmSwift
+import SwipeCellKit
+import ChameleonFramework
 
 class TodoListViewController: UIViewController, UITableViewDelegate, UITableViewDataSource{
     
@@ -25,13 +27,19 @@ class TodoListViewController: UIViewController, UITableViewDelegate, UITableView
         t.translatesAutoresizingMaskIntoConstraints = false
         t.delegate = self
         t.dataSource = self
-        t.register(TodoCell.self, forCellReuseIdentifier: cellID)
+        t.separatorStyle = .none
+        t.rowHeight = 80
+        t.register(SwipeTableViewCell.self, forCellReuseIdentifier: cellID)
         return t
     }()
     
-    private let searchBar: UISearchBar = {
+    lazy var searchBar: UISearchBar = {
         let s = UISearchBar()
         s.translatesAutoresizingMaskIntoConstraints = false
+        s.delegate = self
+        if let color = selectedCategory?.color{
+            s.barTintColor = UIColor(hexString: color)
+        }
         return s
     }()
     
@@ -42,6 +50,26 @@ class TodoListViewController: UIViewController, UITableViewDelegate, UITableView
         navigationItem.title = "Todoey"
         
         setUpView()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(true)
+        guard let color = selectedCategory?.color else {fatalError()}
+        title = selectedCategory!.name
+        updateNavBar(withHexCode: color)
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillAppear(true)
+        updateNavBar(withHexCode: "1D9BF6")
+    }
+    
+    func updateNavBar(withHexCode color: String){
+        guard let navBar = navigationController?.navigationBar else {fatalError("Navigation controller does not exist")}
+        guard let navBarColor = UIColor(hexString: color) else{fatalError()}
+        navBar.barTintColor = navBarColor
+        navBar.largeTitleTextAttributes = [NSAttributedString.Key.foregroundColor : ContrastColorOf(navBarColor, returnFlat: true)]
+        navBar.tintColor = ContrastColorOf(navBarColor, returnFlat: true)
     }
     
     func loadItems(){
@@ -82,14 +110,22 @@ class TodoListViewController: UIViewController, UITableViewDelegate, UITableView
     }
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: cellID, for: indexPath) as! TodoCell
+        let cell = tableView.dequeueReusableCell(withIdentifier: cellID, for: indexPath) as! SwipeTableViewCell
+        cell.delegate = self
+        let colorHex = selectedCategory?.color
+        
         if let item = todoItems?[indexPath.row]{
             cell.textLabel?.text = item.title
             cell.accessoryType = item.done ? .checkmark : .none
+            
+            if let color = UIColor(hexString: colorHex!)?.darken(byPercentage: CGFloat(indexPath.row) / CGFloat(todoItems!.count)){
+                cell.backgroundColor = color
+                cell.textLabel?.textColor = ContrastColorOf(color, returnFlat: true)
+            }
         }else{
             cell.textLabel?.text = "No Items"
         }
-        
+
         return cell
     }
     
@@ -110,7 +146,6 @@ class TodoListViewController: UIViewController, UITableViewDelegate, UITableView
     }
 
     fileprivate func setUpView(){
-        searchBar.delegate = self
         view.addSubview(searchBar)
         searchBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor).isActive = true
         searchBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor).isActive = true
@@ -141,4 +176,35 @@ extension TodoListViewController: UISearchBarDelegate{
         }
     }
 
+}
+
+extension TodoListViewController: SwipeTableViewCellDelegate{
+    func tableView(_ tableView: UITableView, editActionsForRowAt indexPath: IndexPath, for orientation: SwipeActionsOrientation) -> [SwipeAction]? {
+        guard orientation == .right else {return nil}
+        
+        let deleteAction = SwipeAction(style: .destructive, title: "Delete") { (action, indexPath) in
+            print("Delete cell")
+            
+            if let itemForDeletion = self.todoItems?[indexPath.row]{
+                do{
+                    try self.realm.write {
+                        self.realm.delete(itemForDeletion)
+                    }
+                }catch{
+                    print("Error deleting item: \(error.localizedDescription)")
+                }
+            }
+        }
+        
+        deleteAction.image = UIImage(named: "delete")
+        
+        return [deleteAction]
+    }
+    
+    func tableView(_ tableView: UITableView, editActionsOptionsForRowAt indexPath: IndexPath, for orientation: SwipeActionsOrientation) -> SwipeOptions {
+        var options = SwipeTableOptions()
+        options.expansionStyle = .destructive
+        options.transitionStyle = .border
+        return options
+    }
 }
